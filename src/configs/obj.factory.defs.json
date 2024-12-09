@@ -1,0 +1,8 @@
+{
+  "definitions": [
+		{
+			"module": "bootstrap",
+			"objects": ["configObjPostProcessor"]
+		}
+	]
+}
