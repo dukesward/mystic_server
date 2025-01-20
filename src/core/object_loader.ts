@@ -4,7 +4,7 @@ import { ObjectClassExport, ObjectLoadingConfig } from "./types";
 import { ModuleNotDefined } from "./exceptions";
 
 interface ObjectLoader {
-  loadObject(config: ObjectLoadingConfig): Promise<ObjectClassExport[] | null>;
+  loadObject(config: ObjectLoadingConfig): Promise<ObjectClassExport[]>;
 }
 
 class ApplicationRuntimeObjectLoader implements ObjectLoader {
@@ -12,13 +12,12 @@ class ApplicationRuntimeObjectLoader implements ObjectLoader {
 	constructor(rootUri?: string) {
 		this.rootUri = rootUri || __dirname;
 	}
-	loadObject(config: ObjectLoadingConfig): Promise<ObjectClassExport[] | null> {
+	loadObject(config: ObjectLoadingConfig): Promise<ObjectClassExport[]> {
 		let name = config.name;
 		let module = config.module ? `applications/${config.module?.replace('.', '/')}` : "core";
 		let objSrc = `${this.rootUri}${module}/${name}.js`;
 		const o: Promise<Module> = import(objSrc);
 		return o.then((val: any) => {
-			// AppLogger.info(val.exports);
 			let type: string = config.type;
 			if(type in val) {
 				let list: ObjectClassExport[] = val[type];
@@ -32,13 +31,13 @@ class ApplicationRuntimeObjectLoader implements ObjectLoader {
 			return [];
 		}).catch((err: any) => {
 			AppLogger.error(err);
-			return null;
+			return [];
 		});
 	}
 }
 
 class ModuleSpecificObjectLoader implements ObjectLoader {
-	loadObject(config: ObjectLoadingConfig): Promise<ObjectClassExport[] | null> {
+	loadObject(config: ObjectLoadingConfig): Promise<ObjectClassExport[]> {
 		let module = config.module?.replace(".", "/");
 		if(module) {
 			let moduleRoot = `file://${__dirname}/../../`;

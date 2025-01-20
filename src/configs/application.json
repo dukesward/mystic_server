@@ -1,0 +1,12 @@
+{
+  "application": [
+		{
+			"modules": {
+				"allowed": [
+					"bootstrap", "security", "user", "admin", "gateway"
+				],
+				"required": ["core"]
+			}
+		}
+	]
+}

@@ -1,3 +1,4 @@
+import { MethodNotImplemented } from "./exceptions"
 import { AppLogger } from "./logger"
 import { Consumer, Converter, Predicate, Supplier } from "./types"
 
@@ -12,11 +13,14 @@ interface ObjectFilterable<T> extends ObjectIterable<T> {
 }
 
 interface ObjectList<T> extends ObjectIterable<T> {
-  get(i: number): ObjectListNode<T>
+  get(i: number): ObjectListNode<T> | null
   add(o: T): void
+  addAll(o: T[]): void
 }
 
-interface ObjectArrayList<T> extends ObjectList<T> {
+interface ObjectArrayList<T> extends ObjectIterable<T> {
+  get(i: number): T | null
+  add(o: T): void
   from(items: T[]): void
   to(): T[]
 }
@@ -114,7 +118,7 @@ class SimpleLinkedListIterator<T> implements Iterator<T | null, any, T> {
     }
   }
   return?(value?: any): IteratorResult<T, any> {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("SimpleLinkedListIterator::return");
   }
   throw?(e?: any): IteratorResult<T, any> {
     AppLogger.error(e);
@@ -143,20 +147,30 @@ class SimpleLinkedList<T> implements ObjectLinkedList<T> {
     }
     this._size ++;
   }
+  addAll(o: T[]): void {
+    for(let item of o) {
+      this.add(item);
+    }
+  }
   first(): T | null {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("SimpleLinkedList::first");
   }
   last(): T | null {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("SimpleLinkedList::last");
   }
   next(): T | null {
     return (this._node && this._node.next()) ? (this._node.next()?.get() || null) : null;
   }
   get(i: number): ObjectListNode<T> {
-    throw new Error("Method not implemented.")
+    let index: number = 0;
+    let node: ObjectListNode<T> | null = this._node;
+    while(++index <= i && index < this.size()) {
+      if(node && !node.empty()) node = node.next();
+    }
+    return node || this._node;
   }
   each(action: Consumer<T>): void {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("SimpleLinkedList::each");
   }
   [Symbol.iterator](): Iterator<T | null, any, T> {
     return new SimpleLinkedListIterator<T>(this._node);
@@ -164,37 +178,36 @@ class SimpleLinkedList<T> implements ObjectLinkedList<T> {
 }
 
 class SimpleArrayList<T> implements ObjectArrayList<T> {
-  private items?: T[]
+  private items: T[] = []
   constructor(items?: T[]) {
-    if(items) this.items = items;
+    if(items) this.items.concat(items);
   }
-  get(i: number): ObjectListNode<T> {
-    throw new Error("Method not implemented.")
+  get(i: number): T | null {
+    return i < this.items.length ? this.items[i] : null;
   }
   add(o: T): void {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("SimpleArrayList::add");
   }
   from(items: T[]): void {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("SimpleArrayList::from");
   }
   to(): T[] {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("SimpleArrayList::to");
   }
   each(action: Consumer<T>): void {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("SimpleArrayList::each");
   }
   size(): number {
-    throw new Error("Method not implemented.")
+    return this.items.length;
   }
   [Symbol.iterator](): Iterator<T | null, any, any> {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("SimpleArrayList::Symbol.iterator");
   }
-  
 }
 
 class FilterableLinkedList<T> extends SimpleLinkedList<T> implements ObjectFilterable<T> {
   filter(condition: Predicate<T>): ObjectIterable<T> {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("FilterableLinkedList::filter");
   }
 }
 
@@ -220,7 +233,7 @@ class SimpleMapIterator<T> implements Iterator<T, any, T> {
     }
   }
   return?(value?: any): IteratorResult<T, any> {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("SimpleMapIterator::return");
   }
   throw?(e?: any): IteratorResult<T, any> {
     AppLogger.error(e);
@@ -262,7 +275,11 @@ class SimpleMap<T> implements ObjectMap<T> {
 
 class SimpleSortableMap<T> extends SimpleMap<T> implements ObjectSortableMap<T> {
   sort(sortBy: Converter<T, number>): T[] {
-    return [];
+    let list: T[] = this.toList();
+    list.sort((a: T, b: T) => {
+      return sortBy(a) - sortBy(b);
+    });
+    return list;
   }
 }
 

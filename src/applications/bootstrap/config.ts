@@ -1,38 +1,32 @@
 import { ConfigDataContributor, ConfigDataImporter, ConfigDataResolver } from "@core/config";
-import { ObjectBindResult, ObjectBindable, ObjectBinder } from "@core/object_properties";
-import { ObjectIterable, ObjectList, ObjectListNode } from "@core/data_structure";
+import { ObjectBindable, ObjectBinder } from "@core/object_properties";
+import { ObjectArrayList, ObjectIterable, ObjectList, ObjectListNode, ObjectMap, SimpleArrayList, SimpleLinkedList } from "@core/data_structure";
 import { ObjectProperty } from "@core/object_functions";
-import { Consumer, ObjectConfigLocation, ObjectType } from "@core/types";
-import { AppLogger } from "@core/logger";
+import { Consumer, ObjectClassExport, ObjectConfigLocation, ObjectResolvedConfig, ObjectType } from "@core/types";
+import { AppLogger, AppLoggerBuilder, Logger } from "@core/logger";
 import { ConfigDataResource, ResourceLoader } from "@core/resource_loader";
-import { Autowired } from "@core/decorators";
+import { Resource } from "@core/decorators";
+import { MethodNotImplemented } from "@core/exceptions";
+import path from "path";
 
-class ObjectBoundProperty<T> implements ObjectBindResult<T> {
-  private value: T | null
-  constructor(value: T | null) {
-    this.value = value
-  }
-  get(): T | null {
-    return this.value;
-  }
-  isBound(): boolean {
-    return this.value !== null;
-  }
-  orElse(other: T | null): T | null {
-    return this.value != null ? this.value : other;
-  }
-}
+const OBJ_CONFIG_SPLITTER = ".";
+const CONFIG_NAME_PROPERTY = "spring.config.name";
 
 class ObjectConfigProperty implements ObjectProperty {
-  private elements: ObjectList<string>
-  constructor(elements: ObjectList<string>) {
-    this.elements = elements;
+  private elements: ObjectArrayList<string>
+  private fullName: string
+  constructor(element: string) {
+    this.fullName = element;
+    this.elements = new SimpleArrayList<string>(element.split(OBJ_CONFIG_SPLITTER));
+  }
+  getFullName(): string {
+    return this.fullName;
   }
   empty(): boolean {
     return this.elements && this.elements.size() > 0
   }
   getElement(i: number): string | null {
-    return this.elements.size() > i ? this.elements.get(i).get() : null
+    return this.elements.size() > i ? this.elements.get(i) : null
   }
 }
 
@@ -46,40 +40,103 @@ class ObjectBindableProperty<T> implements ObjectBindable<T> {
   }
 }
 
-@Autowired(["objectBinder", "configResourceLoader"])
+class StandardConfigDataReference {
+  private configLocation: ObjectConfigLocation
+  private resourceLocation: string
+  private directory: string
+  private profile?: string
+  constructor(
+    location: ObjectConfigLocation, directory: string, extension?: string, profile?: string) {
+      this.configLocation = location
+      this.directory = directory
+      this.resourceLocation = extension || ''
+      if(profile) this.profile = profile
+  }
+}
+
+@Resource(["binder:objectBinder", "resourceLoader:configResourceLoader"])
 class StandardConfigDataResolver implements ConfigDataResolver {
   private binder!: ObjectBinder
   private resourceLoader!: ResourceLoader<any>
-  /*constructor(binder: ObjectBinder, resourceLoader: ResourceLoader<any>) {
-    this.binder = binder;
-    this.resourceLoader = resourceLoader;
-  }*/
+  private configNames!: string[]
+  private logger: Logger 
+  constructor() {
+    this.logger = AppLoggerBuilder.build({instance: this});
+    this.configNames = this.getConfigNames(this.binder);
+    this.logger.debug("StandardConfigDataResolver config names " + this.configNames);
+  }
+  getConfigNames(binder: ObjectBinder): string[] {
+    let strings: string[] = [];
+    return binder.bindType(CONFIG_NAME_PROPERTY, { type: "Array.String", value: () => strings }).orElse(["application"]) || [];
+  }
   getBinder(): ObjectBinder {
     return this.binder;
   }
-  resolve(location: ObjectConfigLocation): ConfigDataResource<any> {
-    AppLogger.debug('StandardConfigDataResolver::resolve');
-    throw new Error("Method not implemented.");
+  getReference(configLocation: ObjectConfigLocation): StandardConfigDataReference[] {
+    let resourceLocation: string = this.getResourceLocation(configLocation);
+    if(resourceLocation.endsWith("/") || resourceLocation.endsWith(path.sep)) {
+      return this.getResourceFromDirectory(resourceLocation);
+    }
+    return this.getResourceFromFile(resourceLocation);
+  }
+  getResourceLocation(configLocation: ObjectConfigLocation): string {
+    let resourceLocation: string = configLocation.value;
+    let urlMatcher = /^([a-zA-Z][a-zA-Z0-9*]*?:)(.*$)/;
+    let isAbsolutePath: boolean = resourceLocation.startsWith("/") || urlMatcher.test(resourceLocation);
+    this.logger.debug(`getResourceLocation: isAbsolutePath? ${isAbsolutePath}`);
+    if(isAbsolutePath) {
+      return resourceLocation;
+    }
+    return __dirname + resourceLocation;
+  }
+  getResourceFromDirectory(directory: string): StandardConfigDataReference[] {
+    let references: StandardConfigDataReference[] = [];
+    for(let configName of this.configNames) {
+      this.resourceLoader.getResources("propertySourceLoader", (objs: ObjectClassExport[]) => {
+
+      });
+    }
+    return references;
+  }
+  getResourceFromFile(directory: string): StandardConfigDataReference[] {
+    throw new MethodNotImplemented("StandardConfigDataResolver::getResourceFromFile");
+  }
+  resolve(location: ObjectConfigLocation): ConfigDataResource<any>[] {
+    let resolved: ConfigDataResource<any>[] = [];
+    let reference: StandardConfigDataReference[] = this.getReference(location);
+    return resolved;
+  }
+  resolvable(location: ObjectConfigLocation): boolean {
+    return true;
   }
 }
 
 class ConfigDataContributors implements ObjectIterable<ConfigDataContributor> {
-  private contributors: ObjectListNode<ConfigDataContributor> | null
+  private contributors: ObjectList<ConfigDataContributor> | null
+  private current: number = 0
+  private logger: Logger
   constructor(contributors: ObjectList<ConfigDataContributor>) {
-    this.contributors = contributors.get(0);
+    this.logger = AppLoggerBuilder.build({instance: this});
+    this.contributors = contributors;
   }
   withProcessedImports(importer: ConfigDataImporter): void {
     while(true) {
-      let node: ObjectListNode<ConfigDataContributor> | null = this.getNext();
-      if(!node || node.empty()) {
+      let contributor: ConfigDataContributor | null = this.getNext();
+      if(!contributor) {
         return;
       }
-      let contributor = node.get();
+      // let contributor = node.get();
       if(contributor) {
         let imports: ObjectConfigLocation[] | null = contributor.getImports();
-        AppLogger.debug(`Processing imports ${imports}`);
-        if(imports) {
-          let imported = importer.resolve(imports);
+        this.logger.debug(`Processing imports ${imports}`);
+        if(!imports) {
+          this.logger.debug("No imports found, skip contributor");
+          continue;
+        }
+        let imported: ObjectMap<ObjectResolvedConfig> | null = importer.resolve(imports);
+        if(imported) {
+          this.logger.debug(`Imported ${imported}`);
+          break;
         }
       }else {
         return;
@@ -87,20 +144,28 @@ class ConfigDataContributors implements ObjectIterable<ConfigDataContributor> {
     }
   }
   each(action: Consumer<ConfigDataContributor>): void {
-    throw new Error("Method not implemented.");
+    throw new MethodNotImplemented("ConfigDataContributors::each");
   }
   size(): number {
-    throw new Error("Method not implemented.");
+    throw new MethodNotImplemented("ConfigDataContributors::size");
   }
-  getNext(): ObjectListNode<ConfigDataContributor> | null {
-    if(this.contributors) this.contributors = this.contributors.next();
-    return this.contributors;
+  getNext(): ConfigDataContributor | null {
+    if(this.contributors) {
+      let contributor = this.contributors.get(this.current++);
+      if(contributor && !contributor.empty()) {
+        return contributor.get();
+      }
+    }
+    return null;
   }
   addAll(contributors: ConfigDataContributor[]): void {
-
+    if(!this.contributors) {
+      this.contributors = new SimpleLinkedList<ConfigDataContributor>();
+    }
+    this.contributors.addAll(contributors);
   }
   [Symbol.iterator](): Iterator<ConfigDataContributor | null, any, any> {
-    throw new Error("Method not implemented.");
+    throw new MethodNotImplemented("ConfigDataContributors::Symbol.iterator");
   }
 }
 
@@ -109,7 +174,6 @@ const configDataResolver = [
 ];
 
 export {
-  ObjectBoundProperty,
   ObjectConfigProperty,
   ObjectBindableProperty,
   ConfigDataContributors,

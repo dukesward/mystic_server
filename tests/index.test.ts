@@ -5,4 +5,4 @@ import { AppLogger } from "../src/core/logger";
 
 let configResolver: StandardConfigDataResolver = new StandardConfigDataResolver();
 
-AppLogger.debug(configResolver.getBinder());
+AppLogger.debug(configResolver);

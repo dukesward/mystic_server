@@ -1,5 +1,6 @@
 import { ApplicationContext, ApplicationEnvironment } from "./application"
 import { ApplicationEvent, ApplicationEventPublisher, ApplicationStartupEvent } from "./events"
+import { MethodNotImplemented } from "./exceptions"
 import { AppLogger } from "./logger"
 import { EnvironmentPostProcessor } from "./processors"
 import { ApplicationRuntimeConfigResourceLoader, ObjectConfigLoaderDelegate } from "./resource_loader"
@@ -44,7 +45,7 @@ class EnvironmentPostProcessListener extends ApplicationStartupListener {
     });
   }
   onContextPrepared(context: ApplicationContext): void {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("EnvironmentPostProcessListener::onContextPrepared");
   }
   getEnvironmentPostProcessors(
     context: ApplicationContext,

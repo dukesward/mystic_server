@@ -1,14 +1,16 @@
 import { Express, Request, Response } from "express";
-import { AppLogger } from "./logger";
+import { AppLogger, AppLoggerBuilder, Logger } from "./logger";
 import { ObjectLoader } from "./object_loader";
 import { ObjectFactory } from "./object_factory";
 import { Consumer, GenericConstructor, ObjectClassExport, ObjectLoadingConfig, Predicate } from "./types";
 import { ObjectMap, ObjectSortableMap, SimpleMap, SimpleSortableMap } from "./data_structure";
-import { ObjectConstructorParser, ObjectInvokerChain, ObjectParser, ObjectSimpleInvokerChain, Ordered } from "./object_functions";
+import { ObjectConstructorParser, ObjectInvokerChain, ObjectParser, ObjectProperty, ObjectSimpleInvokerChain, Ordered } from "./object_functions";
 import { ApplicationStartupListener } from "./listeners";
 import { ApplicationRuntimeConfigResourceLoader, ObjectConfigLoaderDelegate } from "./resource_loader";
 import { ConfigDataProperties } from "./config";
-import { applicationContextGlobal } from "../index";
+import { applicationContextGlobal } from "../app";
+import { MethodNotImplemented } from "./exceptions";
+import { Property, PropertySource } from "./decorators";
 
 const APP_SERVER_PORT = 'application.server.port';
 
@@ -19,8 +21,8 @@ interface Application {
 interface ApplicationPropertySource<T> extends Ordered {
   getName(): string
   getSource(): T
-  getProperty(name: string): any
-  containsProperty(name: string): boolean
+  getProperty(prop: ObjectProperty): any
+  containsProperty(prop: ObjectProperty): boolean
   getPropertyNames(): string[]
 }
 
@@ -31,8 +33,8 @@ interface ApplicationConfigPropertySource extends ApplicationPropertySource<Conf
 }
 
 interface ApplicationPropertyResolver {
-  getProperty(key: string): string | null
-  containsProperty(key: string): boolean
+  getProperty(prop: ObjectProperty): string | null
+  containsProperty(prop: ObjectProperty): boolean
 }
 
 interface ApplicationEnvironment extends ApplicationPropertyResolver {
@@ -59,6 +61,8 @@ interface ApplicationContext {
   setEnvironment(environment: ApplicationEnvironment): void
   setResourceLoader(resourceLoader: ObjectConfigLoaderDelegate): void
   getResourceLoader(): ObjectConfigLoaderDelegate
+  getObjectLoader(): ObjectLoader
+  getObjectFactory(): ObjectFactory
 }
 
 interface ApplicationContextFactory {
@@ -82,7 +86,7 @@ abstract class AbstractApplicationEnvironment implements ApplicationEnvironment 
 		return this._propertySources;
 	}
 	specifyRequiredProperties(props: string[], validator?: (p: any) => boolean): void {
-		throw new Error("Method not implemented.");
+		throw new MethodNotImplemented("AbstractApplicationEnvironment::specifyRequiredProperties");
 	}
 	abstract getActiveProfile(): string
 	abstract getPropertyResolver(propertySources: ObjectMap<ApplicationPropertySource<any>>): ApplicationPropertyResolver
@@ -95,27 +99,34 @@ abstract class AbstractApplicationEnvironment implements ApplicationEnvironment 
 		}
 		return map;
   }
-	getProperty(key: string): string | null {
-		return this._propertyResolver.getProperty(key);
+	getProperty(prop: ObjectProperty): string | null {
+		return this._propertyResolver.getProperty(prop);
 	}
-	containsProperty(key: string): boolean {
-		return this._propertyResolver.containsProperty(key);
+	containsProperty(prop: ObjectProperty): boolean {
+		return this._propertyResolver.containsProperty(prop);
 	}
 }
 
 class ApplicationServer implements Application {
   private app?: Express
   private resourceLoader!: ObjectConfigLoaderDelegate
-  run(app: Express, applicationContextFactory: ApplicationContextFactory): void {
-    AppLogger.info('starting mystic app server...');
+  private applicationContextFactory: ApplicationContextFactory
+  private logger: Logger
+  constructor(applicationContextFactory: ApplicationContextFactory) {
+    this.applicationContextFactory = applicationContextFactory;
+    this.logger = AppLoggerBuilder.build({instance: this});
+  }
+  run(app: Express): void {
+    this.logger.info('starting mystic app server...');
     this.app = app;
     this.resourceLoader = new ApplicationRuntimeConfigResourceLoader();
     // create and prepare application environment
-    let environment: ApplicationEnvironment = applicationContextFactory.createEnvironment();
+    let environment: ApplicationEnvironment = this.applicationContextFactory.createEnvironment();
     this.getApplicationRunListeners(
       (listeners: SimpleSortableMap<ApplicationStartupListener>) => {
-        let applicationContext: ApplicationContext = applicationContextGlobal || applicationContextFactory.createContext();
+        let applicationContext: ApplicationContext = applicationContextGlobal || this.applicationContextFactory.createContext();
         applicationContext.setResourceLoader(this.resourceLoader);
+        applicationContext.setEnvironment(environment);
         this.prepareEnvironment(applicationContext, environment, listeners);
         // create and prepare application context
         this.prepareContext(applicationContext, environment);
@@ -150,6 +161,9 @@ class ApplicationServer implements Application {
     let propertySources: ObjectMap<ApplicationPropertySource<any>> = environment.getPropertySources();
     this.configureCommandLineArgs(propertySources);
     environment.attachPropertySources();
+    context.getObjectFactory().registerObjWithSupplier<ApplicationEnvironment>(
+			"applicationEnvironment", () => environment
+		);
     // custom environment init items to be added
     let listenerChain: ObjectInvokerChain<ApplicationStartupListener> = new ObjectSimpleInvokerChain(listeners);
     listenerChain.invoke(
@@ -159,13 +173,13 @@ class ApplicationServer implements Application {
 
   }
   doStartup(context: ApplicationContext): void {
-    let port = context.getEnvironment().getProperty(APP_SERVER_PORT) || process.env.PORT;
+    let port = process.env.PORT;
     if(this.app) {
       this.app.get("/", (req: Request, res: Response) => {
         res.send("Express + TypeScript Server");
       });
       this.app.listen(port, () => {
-        AppLogger.info(`[server]: Server is running at http://localhost:${port} for environment ${process.env.NODE_ENV}!`);
+        this.logger.info(`[server]: Server is running at http://localhost:${port} for environment ${process.env.NODE_ENV}!`);
       });
     }else {
 
@@ -178,11 +192,19 @@ class ApplicationServer implements Application {
         name: name,
         type: type
       });
-      AppLogger.info('loadObject task is finished');
+      this.logger.info('loadObject task is finished');
       if(callback && clazzes) {
         callback(clazzes)
       };
     }
+  }
+}
+
+@PropertySource("application.json")
+class ApplicationConfig {
+  @Property("modules.allowed")
+  getAllowedModules(): string[] {
+    return [];
   }
 }
 

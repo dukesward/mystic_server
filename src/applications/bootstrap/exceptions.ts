@@ -1,3 +1,14 @@
+class ServerStartupException implements Error {
+  name: string;
+  message: string;
+  stack?: string | undefined;
+  constructor(message: string, stack?: string) {
+    this.name = "server_startup_exception";
+    this.message = message;
+    this.stack = stack;
+  }
+}
+
 class ObjectDefinitionDuplicate implements Error {
   name: string;
   message: string;
@@ -21,6 +32,7 @@ class ObjectDefinitionNotFound implements Error {
 }
 
 export {
+  ServerStartupException,
   ObjectDefinitionDuplicate,
   ObjectDefinitionNotFound
 }

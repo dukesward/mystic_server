@@ -38,6 +38,7 @@
     "moduleResolution": "Node16",                        /* Specify how TypeScript looks up a file from a given module specifier. */
     "baseUrl": ".",                                      /* Specify the base directory to resolve non-relative module names. */
     "paths": {
+      "@src/*": ["src/*"],
       "@core/*": ["src/core/*"],
       "@context/*": ["src/applications/bootstrap/context/*"],
       "@applications/*": ["src/applications/*"],

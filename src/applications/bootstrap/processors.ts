@@ -5,27 +5,35 @@ import { ObjectList, ObjectMap, SimpleLinkedList } from "@core/data_structure";
 import { EnvironmentPostProcessor } from "@core/processors";
 import { ObjectClassExport, ObjectConfigLocation } from "@core/types";
 import { ConfigDataContributors, ObjectBindableProperty } from "./config";
-import { AppLogger } from "@core/logger";
+import { AppLoggerBuilder, Logger } from "@core/logger";
 import { ObjectConfigPropertyBinder } from "./object_properties";
+import { ObjectDefinitionPostProcessor, ObjectFactory } from "@src/core/object_factory";
 
 const CONFIG_LOCATION_PROPERTY = "default.config.location";
 
 
 class ConfigDataEnvironmentPostProcessor implements EnvironmentPostProcessor {
   private contributors?: ConfigDataContributors
-  postProcessEnvironment(context: ApplicationContext, environment: ApplicationEnvironment): void {
-    let binder: ObjectBinder = new ObjectConfigPropertyBinder(environment);
-    let importer: ConfigDataImporter = new ConfigDataImporter(this.createConfigDataResolvers(context));
+  private logger: Logger
+  constructor() {
+    this.logger = AppLoggerBuilder.build({instance: this});
+  }
+  async postProcessEnvironment(context: ApplicationContext, environment: ApplicationEnvironment): Promise<void> {
+    let binder: ObjectBinder = new ObjectConfigPropertyBinder();
+    let importer: ConfigDataImporter = new ConfigDataImporter(await this.createConfigDataResolvers(context));
     let contributors: ConfigDataContributors = this.getContributors(environment, binder, importer);
     this.applyToEnvironment(environment, contributors, importer.getLoadedLocations());
   }
-  createConfigDataResolvers(context: ApplicationContext): ConfigDataResolver[] {
+  async createConfigDataResolvers(context: ApplicationContext): Promise<ConfigDataResolver[]> {
     let resolvers: ConfigDataResolver[] = [];
-    context.getResourceLoader().getResources("configDataResolver", (clazzes: ObjectClassExport[]) => {
+    await context.getResourceLoader().getResources("configDataResolver", (clazzes: ObjectClassExport[]) => {
       for(let clazz of clazzes) {
-        resolvers.push(new clazz.object());
+        let obj = new clazz.object();
+        resolvers.push(obj);
       }
+      // this.logger.debug(resolvers);
     });
+    this.logger.debug("resolvers loaded");
     return resolvers;
   }
   getContributors(
@@ -39,7 +47,7 @@ class ConfigDataEnvironmentPostProcessor implements EnvironmentPostProcessor {
         }
       }
       let initialContributors: ConfigDataContributor[] = [];
-      let defaultConfigLocations: ObjectConfigLocation[] = [];
+      let defaultConfigLocations: ObjectConfigLocation[] = [{value: "src/resources", origin: null}];
       let initialLocations: ObjectConfigLocation[] | null = binder
       .bind<ObjectConfigLocation[]>(CONFIG_LOCATION_PROPERTY, new ObjectBindableProperty({
         type: "Array.ObjectConfigLocation",
@@ -54,7 +62,6 @@ class ConfigDataEnvironmentPostProcessor implements EnvironmentPostProcessor {
       }
       this.contributors = new ConfigDataContributors(list);
       this.contributors.addAll(initialContributors);
-      AppLogger.debug(this.contributors);
       this.contributors.withProcessedImports(importer);
     }
     return this.contributors;
@@ -65,11 +72,33 @@ class ConfigDataEnvironmentPostProcessor implements EnvironmentPostProcessor {
   }
 }
 
+class ConfigObjectPostProcessor implements ObjectDefinitionPostProcessor {
+	_environment: ApplicationEnvironment
+  private logger: Logger
+	constructor(environment: ApplicationEnvironment) {
+		this._environment = environment;
+    this.logger = AppLoggerBuilder.build({instance: this});
+	}
+	postProcess(context: ApplicationContext, factory: ObjectFactory): void {
+		this.logger.debug('Post process config objects');
+    this.loadApplicationConfigurations(context);
+	}
+  async loadApplicationConfigurations(context: ApplicationContext) {
+    let objectLoader = context.getObjectLoader();
+    // let configs: ObjectConfigLocation[] = [{value: "src/core", origin: null}];
+  }
+}
+
 const environmentPostProcessor = [
   {object:ConfigDataEnvironmentPostProcessor}
 ];
 
+const objectDefinitionPostProcessor = [
+  {object:ConfigObjectPostProcessor}
+]
+
 export {
   ConfigDataEnvironmentPostProcessor,
-  environmentPostProcessor
+  environmentPostProcessor,
+  objectDefinitionPostProcessor
 }

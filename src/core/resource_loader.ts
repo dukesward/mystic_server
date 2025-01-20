@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { AppLogger } from "./logger";
+import { AppLogger, AppLoggerBuilder, Logger } from "./logger";
 import { ApplicationRuntimeObjectLoader, ObjectLoader } from "./object_loader"
-import { ResourceNotFound } from './exceptions';
-import { Consumer, ObjectClassExport, ObjectConfigDictionary, ObjectDefinition } from './types';
+import { MethodNotImplemented, ResourceNotFound } from './exceptions';
+import { Consumer, ObjectClassExport, ObjectConfigDictionary, ObjectDefinition, ObjectLoadingConfig } from './types';
 import { modules } from './modules';
 
 const URL_FILE_PROTOCOL = "file://";
@@ -17,6 +17,7 @@ interface Resource<T> {
 
 interface ResourceLoader<T> {
   getResource(resource: string): Resource<T>
+  getResources(resource: string, next?: Consumer<ObjectClassExport[]>): Promise<any>
 	getObjectLoader(): ObjectLoader
 }
 
@@ -51,10 +52,10 @@ class SimpleJsFileResource<T> extends FileResource<T> {
 
 class ConfigDataResource<T> extends FileResource<T> {
   exists(): boolean {
-    throw new Error('Method not implemented.');
+    throw new MethodNotImplemented("ConfigDataResource::exists");
   }
   getResource(): T {
-    throw new Error('Method not implemented.');
+    throw new MethodNotImplemented("ConfigDataResource::getResource");
   }
   
 }
@@ -68,50 +69,52 @@ abstract class ObjectConfigLoaderDelegate implements ResourceLoader<ObjectDefini
     return this._objectLoader;
   }
   abstract getResource(resource: string): SimpleJsFileResource<ObjectDefinition>
-  abstract getResources(resource: string, next?: Consumer<ObjectClassExport[]>): void
+  abstract getResources(resource: string, next?: Consumer<ObjectClassExport[]>): Promise<any>
 }
 
 class ApplicationRuntimeConfigResourceLoader extends ObjectConfigLoaderDelegate {
   private modules: ObjectConfigDictionary<string>
+  private logger: Logger
   constructor() {
     super();
     this.modules = modules;
+    this.logger = AppLoggerBuilder.build({instance: this});
   }
   getResource(resource: string): SimpleJsFileResource<ObjectDefinition> {
-    throw new Error("Method not implemented.")
+    throw new MethodNotImplemented("ApplicationRuntimeConfigResourceLoader::getResource");
   }
   getAutowiredResource(resource: string): void {
     let objSrc = path.join(__dirname, '/../applications');
 
   }
-  getResources(resource: string, next?: Consumer<ObjectClassExport[]>): void {
+  async getResources(resource: string, next?: Consumer<ObjectClassExport[]>): Promise<any> {
     // let moduleRoot = `file://${__dirname}/../../`;
     let objSrc = path.join(__dirname, '/../applications');
-    try {
-      let resources = fs.readdirSync(objSrc);
-      let resourceFiles: string[] = this.modules[resource] || [];
-      AppLogger.debug("getResources");
-      AppLogger.debug(resourceFiles);
-      resources.forEach((module: string) => {
-        for(let file of resourceFiles) {
-          let target: string = `${objSrc}/${module}/${file}.js`;
-          if(fs.existsSync(target)) {
-            this._objectLoader.loadObject({
-              name: file,
-              module: module,
-              type: resource
-            }).then(
-              (obj: ObjectClassExport[] | null) => {
-                if(next && obj) next(obj);
-              }
-            )
-          }
-        }
-      });
-    }catch(err) {
-      AppLogger.error(`Could not list directory ${objSrc} due to: ${err}`);
-      throw new ResourceNotFound(objSrc);
-      //process.exit(1);
+    let resources: string[] = fs.readdirSync(objSrc);
+    let resourceFiles: string[] = this.modules[resource] || [];
+    for(let i=0; i<resources.length; i++) {
+      let module: string = resources[i];
+      for(let file of resourceFiles) {
+        let target: string = `${objSrc}/${module}/${file}.js`;
+        await this.doGetResources(target, {
+          name: file,
+          module: module,
+          type: resource
+        }, next);
+      }
+    }
+  }
+  async doGetResources(
+    source: string, config: ObjectLoadingConfig, next?: Consumer<ObjectClassExport[]>): Promise<any> {
+    if(fs.existsSync(source)) {
+      try {
+        let obj: ObjectClassExport[] | null = await this._objectLoader.loadObject(config);
+        if(next && obj) next(obj);
+        return obj;
+      }catch (err) {
+        this.logger.error(`Could not list directory ${source} due to ${err}`);
+        throw new ResourceNotFound(source);
+      }
     }
   }
 }

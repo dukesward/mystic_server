@@ -1,10 +1,10 @@
 {
   "application": {
-    "core": {
-      "profile": "dev"
-    },
-    "bootstrap": {
-      
+    "modules": {
+      "allowed": [
+        "bootstrap", "security", "user", "admin", "gateway"
+      ],
+      "required": ["core"]
     }
   }
 }

@@ -1,5 +1,6 @@
 import { ObjectIterable } from "./data_structure";
-import { AppLogger } from "./logger";
+import { AppLogger, AppLoggerBuilder, Logger } from "./logger";
+import { ObjectConversionService } from "./object_properties";
 import { GenericConstructor } from "./types"
 
 interface Ordered {
@@ -9,10 +10,7 @@ interface Ordered {
 interface ObjectProperty {
   empty(): boolean
   getElement(i: number): string | null
-}
-
-interface ObjectConverter<K, V> {
-  convert(k: K): V
+  getFullName(): string
 }
 
 interface ObjectParser<T> {
@@ -47,15 +45,17 @@ class ObjectConstructorParser implements ObjectParser<GenericConstructor> {
 class ObjectSimpleInvokerChain<T> implements ObjectInvokerChain<T> {
   private items: ObjectIterable<T>
   private index: number
+  private logger: Logger
   constructor(items: ObjectIterable<T>) {
     this.items = items;
     this.index = 0;
+    this.logger = AppLoggerBuilder.build({instance: this});
   }
   invoke(action: (item: T) => void): void {
     let self = this;
     let generator: Generator = (function *() {
       for(let i of self.items) {
-        AppLogger.debug(i);
+        // self.logger.debug(i);
         self.index ++;
         if(i) yield action(i);
       }
@@ -72,7 +72,6 @@ class ObjectSimpleInvokerChain<T> implements ObjectInvokerChain<T> {
 export {
   Ordered,
   ObjectProperty,
-  ObjectConverter,
   ObjectParser,
   ObjectConstructorParser,
   ObjectInvokerChain,

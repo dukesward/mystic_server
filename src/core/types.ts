@@ -1,3 +1,5 @@
+import { ApplicationPropertySource } from "./application"
+import { ObjectProperty } from "./object_functions"
 import { ConfigDataResource } from "./resource_loader"
 
 type Consumer<T> = (t: T) => void
@@ -7,20 +9,26 @@ type Converter<K, V> = (k: K) => V
 
 type JsonObject = { [key: string]: any }
 
-type GenericConstructor = { new(...args: any[]): any }
+type GenericConstructor = { new (...args: any[]): any }
+type GenericConstructorParameters<T extends GenericConstructor> = T extends new (...args: infer P) => any ? P : never
+
+type ObjectInstance<T> = {
+  instance: T
+}
 
 type ObjectClassExport = {
-  object: GenericConstructor,
+  objectId?: string
+  object: GenericConstructor
   order?: number
+  source?: () => any
 }
 
 type ObjectDefinition = {
   className: string
-  scope: string
+  type: string
+  scope?: string
   parent?: string
-  dependencies: string[]
-  loading: ObjectLoadingConfig
-  supplier: GenericConstructor
+  classDefinition: ObjectClassExport
 }
 
 type ObjectLoadingConfig = {
@@ -37,7 +45,14 @@ type ObjectPriority = {
 
 type ObjectConfigLocation = {
   value: string
-  origin: string
+  origin: string | null
+}
+
+type ObjectConfigProperty = {
+  prop: ObjectProperty,
+  source: ApplicationPropertySource<any>,
+  value: any,
+  origin: string | null
 }
 
 type ObjectResolvedConfig = {
@@ -46,12 +61,13 @@ type ObjectResolvedConfig = {
   profile: string | null
 }
 
+type ObjectConfigCatalog<T> = {[name: string]: T}
+type ObjectConfigDictionary<T> = ObjectConfigCatalog<T[]>
+
 type ObjectType<T> = {
   type: string
   value: Supplier<T> | null
 }
-
-type ObjectConfigDictionary<T> = {[name: string]: T[]}
 
 interface BiPredicate<T, U> {
   test(t: T, u: U): boolean
@@ -68,12 +84,16 @@ export type {
   Converter,
   JsonObject,
   GenericConstructor,
+  GenericConstructorParameters,
+  ObjectInstance,
   ObjectClassExport,
   ObjectDefinition,
   ObjectLoadingConfig,
   ObjectPriority,
   ObjectResolvedConfig,
   ObjectConfigLocation,
+  ObjectConfigProperty,
   ObjectType,
+  ObjectConfigCatalog,
   ObjectConfigDictionary
 }

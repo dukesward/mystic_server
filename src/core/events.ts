@@ -1,5 +1,6 @@
 import { ApplicationContext, ApplicationEnvironment } from "./application"
 import { FilterableLinkedList, ObjectFilterable, ObjectIterable, SimpleArrayList } from "./data_structure"
+import { MethodNotImplemented } from "./exceptions"
 import { ApplicationListener } from "./listeners"
 
 interface ApplicationEvent {
@@ -58,7 +59,7 @@ class ApplicationEventPublisher {
     if(this._listeners) {
       return this._listeners;
     }
-    throw new Error("Method not implemented.");
+    throw new MethodNotImplemented("ApplicationEventPublisher::getApplicationListeners");
   }
   multicastEvent(event: ApplicationEvent): void {
 
